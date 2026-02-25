@@ -1,0 +1,14 @@
+# Server
+fastapi>=0.110.0
+uvicorn>=0.29.0
+pydantic>=2.0.0
+python-dotenv>=1.0.0
+
+# LiveKit Agents
+livekit-agents>=1.4.0
+livekit>=1.0.0
+
+# LiveKit Plugins
+livekit-plugins-google>=0.10.0
+livekit-plugins-silero>=0.7.0
+livekit-plugins-noise-cancellation>=0.2.0
