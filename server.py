@@ -53,6 +53,8 @@ def _fan_out(subscribers, payload):
 
 def _reader_thread(proc: subprocess.Popen):
     global log_buffer, tx_buffer
+    seen_user_texts = set()   # dedup user transcripts within a session
+
     for raw in iter(proc.stdout.readline, ""):
         line = raw.rstrip()
         if not line:
@@ -64,7 +66,8 @@ def _reader_thread(proc: subprocess.Popen):
 
         if "TRANSCRIPT_USER:" in line:
             text = line.split("TRANSCRIPT_USER:", 1)[1].strip()
-            if text:
+            if text and text not in seen_user_texts:
+                seen_user_texts.add(text)
                 ev = {"type": "transcript", "role": "user", "text": text}
                 tx_buffer.append(ev)
                 _fan_out(tx_subscribers, ev)
@@ -134,22 +137,8 @@ class VoiceAssistant(Agent):
     async def on_enter(self):
         emit('AGENT_STATE: active')
         await self.session.generate_reply(
-            instructions='Greet the user warmly and let them know you are ready to chat.'
+            instructions='Greet the user warmly and tell them you are ready to chat.'
         )
-
-    async def on_user_turn_completed(self, turn_ctx, new_message):
-        # Fallback: extract text from turn message items
-        text = ''
-        try:
-            for item in new_message.items:
-                if hasattr(item, 'text') and item.text:
-                    text += item.text
-        except Exception:
-            pass
-        if text.strip():
-            emit('TRANSCRIPT_USER: ' + text.strip())
-        emit('AGENT_STATE: active')
-        await super().on_user_turn_completed(turn_ctx, new_message)
 
 
 async def entrypoint(ctx: JobContext):
@@ -166,6 +155,7 @@ async def entrypoint(ctx: JobContext):
         allow_interruptions=True,
     )
 
+    # Single source of truth for transcripts — conversation_item_added only
     @session.on('conversation_item_added')
     def on_item(ev):
         try:
@@ -186,14 +176,6 @@ async def entrypoint(ctx: JobContext):
                 emit('TRANSCRIPT_AGENT: ' + text)
         except Exception as ex:
             logger.warning('item event error: ' + str(ex))
-
-    @session.on('user_input_transcribed')
-    def on_user_stt(ev):
-        try:
-            if hasattr(ev, 'transcript') and ev.is_final and ev.transcript.strip():
-                emit('TRANSCRIPT_USER: ' + ev.transcript.strip())
-        except Exception:
-            pass
 
     @session.on('agent_state_changed')
     def on_state(ev):
